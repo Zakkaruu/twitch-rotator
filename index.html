@@ -1,7 +1,1426 @@
-getParentDomain() {
-    var hostname = window.location.hostname;
-    if (!hostname || hostname === '' || hostname === '127.0.0.1') {
-        return 'localhost';
-    }
-    return hostname;  // This will automatically return 'username.github.io'
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Stream Rotator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0e0e10;
+            color: #efeff1;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .container.playing {
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+            gap: 10px;
+            flex-shrink: 0;
+        }
+
+        h1 {
+            color: #9147ff;
+            font-size: 1.3rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .info-panel {
+            background: #18181b;
+            padding: 8px 15px;
+            border-radius: 8px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .info-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .info-label {
+            color: #adadb8;
+            font-size: 0.8rem;
+        }
+
+        .info-value {
+            color: #efeff1;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .current-stream {
+            color: #9147ff;
+        }
+
+        .quality-value {
+            color: #00ad03;
+        }
+
+        button {
+            background: #9147ff;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #772ce8;
+        }
+
+        button.secondary {
+            background: #3a3a3d;
+        }
+
+        button.secondary:hover {
+            background: #4a4a4d;
+        }
+
+        button.danger {
+            background: #eb0400;
+        }
+
+        button.danger:hover {
+            background: #cc0000;
+        }
+
+        button.fullscreen-btn {
+            background: #00875a;
+        }
+
+        button.fullscreen-btn:hover {
+            background: #00a86b;
+        }
+
+        .timer-bar {
+            height: 4px;
+            background: #3a3a3d;
+            border-radius: 2px;
+            margin-bottom: 15px;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .timer-progress {
+            height: 100%;
+            background: #9147ff;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .player-wrapper {
+            position: relative;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            flex: 1;
+            min-height: 0;
+        }
+
+        .player-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #18181b;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .player-container > div {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .player-container iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Standard fullscreen */
+        .player-wrapper:fullscreen {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0;
+        }
+
+        .player-wrapper:fullscreen .player-container {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .player-wrapper:fullscreen .fullscreen-overlay {
+            display: flex !important;
+        }
+
+        .player-wrapper:fullscreen .fullscreen-overlay.overlay-hidden {
+            display: none !important;
+        }
+
+        .player-wrapper:fullscreen:hover .fullscreen-overlay:not(.overlay-hidden) {
+            opacity: 1;
+        }
+
+        /* WebKit (Safari) fullscreen */
+        .player-wrapper:-webkit-full-screen {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0;
+        }
+
+        .player-wrapper:-webkit-full-screen .player-container {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .player-wrapper:-webkit-full-screen .fullscreen-overlay {
+            display: flex !important;
+        }
+
+        .player-wrapper:-webkit-full-screen .fullscreen-overlay.overlay-hidden {
+            display: none !important;
+        }
+
+        .player-wrapper:-webkit-full-screen:hover .fullscreen-overlay:not(.overlay-hidden) {
+            opacity: 1;
+        }
+
+        /* Mozilla (Firefox) fullscreen */
+        .player-wrapper:-moz-full-screen {
+            width: 100vw !important;
+            height: 100vh !important;
+            border-radius: 0;
+        }
+
+        .player-wrapper:-moz-full-screen .player-container {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+
+        .player-wrapper:-moz-full-screen .fullscreen-overlay {
+            display: flex !important;
+        }
+
+        .player-wrapper:-moz-full-screen .fullscreen-overlay.overlay-hidden {
+            display: none !important;
+        }
+
+        .player-wrapper:-moz-full-screen:hover .fullscreen-overlay:not(.overlay-hidden) {
+            opacity: 1;
+        }
+
+        .fullscreen-overlay {
+            display: none;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.9));
+            padding: 20px;
+            padding-bottom: 30px;
+            justify-content: space-between;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 2147483647;
+            pointer-events: auto;
+        }
+
+        .fullscreen-overlay .fs-info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .fullscreen-overlay .fs-stream-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #9147ff;
+        }
+
+        .fullscreen-overlay .fs-timer {
+            font-size: 1.2rem;
+            color: #efeff1;
+        }
+
+        .fullscreen-overlay .fs-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .fullscreen-overlay button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            pointer-events: auto;
+        }
+
+        .fs-progress-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .fs-progress {
+            height: 100%;
+            background: #9147ff;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .stream-list {
+            background: #18181b;
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+            flex-shrink: 0;
+        }
+
+        .stream-list h3 {
+            margin-bottom: 5px;
+            color: #adadb8;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stream-list .hint {
+            margin-bottom: 10px;
+            color: #6a6a6d;
+            font-size: 0.75rem;
+        }
+
+        .streams {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .stream-tag {
+            background: #3a3a3d;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stream-tag:hover {
+            background: #4a4a4d;
+        }
+
+        .stream-tag.active {
+            background: #9147ff;
+        }
+
+        .stream-tag.skipped {
+            background: #1f1f23;
+            opacity: 0.5;
+        }
+
+        .stream-tag.skipped .stream-name {
+            text-decoration: line-through;
+            color: #6a6a6d;
+        }
+
+        .stream-tag.skipped .checkbox {
+            color: #eb0400;
+        }
+
+        .stream-tag.skipped.active {
+            background: #3a3a3d;
+            opacity: 0.7;
+        }
+
+        .stream-tag .checkbox {
+            font-size: 0.9rem;
+            color: #00ad03;
+        }
+
+        .stream-tag .index {
+            color: #adadb8;
+            font-size: 0.75rem;
+        }
+
+        .stream-tag.active .index {
+            color: rgba(255,255,255,0.7);
+        }
+
+        .stream-tag.skipped .index {
+            color: #6a6a6d;
+        }
+
+        .setup-panel {
+            background: #18181b;
+            border-radius: 8px;
+            padding: 30px;
+            max-width: 600px;
+            margin: 50px auto;
+        }
+
+        .setup-panel h2 {
+            margin-bottom: 20px;
+            color: #9147ff;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #adadb8;
+            font-size: 0.9rem;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #3a3a3d;
+            border-radius: 6px;
+            background: #0e0e10;
+            color: #efeff1;
+            font-size: 1rem;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #9147ff;
+        }
+
+        .form-group small {
+            display: block;
+            margin-top: 5px;
+            color: #adadb8;
+            font-size: 0.8rem;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: #9147ff;
+        }
+
+        .checkbox-group label {
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .url-example {
+            background: #0e0e10;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            word-break: break-all;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: #adadb8;
+        }
+
+        @media (max-width: 900px) {
+            .header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            .info-panel {
+                width: 100%;
+            }
+
+            .controls {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+    </style>
+    <script src="https://player.twitch.tv/js/embed/v1.js"></script>
+</head>
+<body>
+    <div class="container" id="app">
+        <div class="setup-panel">
+            <h2>🎮 Loading...</h2>
+        </div>
+    </div>
+
+    <script>
+        class TwitchRotator {
+            constructor() {
+                this.streams = [];
+                this.skippedStreams = new Set();
+                this.currentIndex = 0;
+                this.waitTime = 5;
+                this.quality = 'auto';
+                this.autoFullscreen = false;
+                this.showOverlay = true;
+                this.isPaused = false;
+                this.timerInterval = null;
+                this.elapsedSeconds = 0;
+                this.isFullscreen = false;
+                this.player = null;
+                this.qualitySet = false;
+                this.unmuted = false;
+                this.internalHashChange = false;
+
+                this.parseURL();
+                this.render();
+                this.setupFullscreenListener();
+            }
+
+            getParentDomain() {
+                var hostname = window.location.hostname;
+                if (!hostname || hostname === '' || hostname === '127.0.0.1') {
+                    return 'localhost';
+                }
+                return hostname;
+            }
+
+            parseURL() {
+                var hash = window.location.hash.slice(1);
+                if (!hash) return;
+
+                var parts = hash.split('/').filter(function(p) { return p; });
+                var streams = [];
+                var waitTime = 5;
+                var quality = 'auto';
+                var autoFullscreen = false;
+                var showOverlay = true;
+
+                for (var i = 0; i < parts.length; i++) {
+                    var part = parts[i];
+                    if (part.indexOf('wait=') === 0) {
+                        waitTime = parseFloat(part.split('=')[1]) || 5;
+                    } else if (part.indexOf('quality=') === 0) {
+                        quality = part.split('=')[1] || 'auto';
+                    } else if (part === 'fullscreen' || part === 'fs') {
+                        autoFullscreen = true;
+                    } else if (part === 'nooverlay' || part === 'clean') {
+                        showOverlay = false;
+                    } else if (part && part.indexOf('=') === -1) {
+                        streams.push(part.toLowerCase());
+                    }
+                }
+
+                this.streams = streams;
+                this.waitTime = Math.max(0.1, waitTime);
+                this.quality = quality;
+                this.autoFullscreen = autoFullscreen;
+                this.showOverlay = showOverlay;
+                this.skippedStreams = new Set();
+            }
+
+            updateURL() {
+                if (this.streams.length === 0) {
+                    window.location.hash = '';
+                    return;
+                }
+
+                var parts = this.streams.slice();
+                parts.push('wait=' + this.waitTime);
+                if (this.quality !== 'auto') {
+                    parts.push('quality=' + this.quality);
+                }
+                if (this.autoFullscreen) {
+                    parts.push('fullscreen');
+                }
+                if (!this.showOverlay) {
+                    parts.push('nooverlay');
+                }
+
+                this.internalHashChange = true;
+                window.location.hash = parts.join('/');
+            }
+
+            getFullscreenElement() {
+                return document.fullscreenElement || 
+                       document.webkitFullscreenElement || 
+                       document.mozFullScreenElement ||
+                       document.msFullscreenElement ||
+                       null;
+            }
+
+            setupFullscreenListener() {
+                var self = this;
+                var updateFullscreen = function() {
+                    self.isFullscreen = !!self.getFullscreenElement();
+                    self.updateFullscreenButton();
+                    self.fixFullscreenSizing();
+                };
+
+                document.addEventListener('fullscreenchange', updateFullscreen);
+                document.addEventListener('webkitfullscreenchange', updateFullscreen);
+                document.addEventListener('mozfullscreenchange', updateFullscreen);
+                document.addEventListener('MSFullscreenChange', updateFullscreen);
+            }
+
+            fixFullscreenSizing() {
+                var wrapper = document.querySelector('.player-wrapper');
+                var container = document.querySelector('.player-container');
+                var playerDiv = container ? container.querySelector(':scope > div') : null;
+                var overlay = document.querySelector('.fullscreen-overlay');
+
+                if (this.isFullscreen) {
+                    if (wrapper) {
+                        wrapper.style.width = '100vw';
+                        wrapper.style.height = '100vh';
+                        wrapper.style.position = 'fixed';
+                        wrapper.style.top = '0';
+                        wrapper.style.left = '0';
+                        wrapper.style.zIndex = '2147483646';
+                        wrapper.style.borderRadius = '0';
+                    }
+                    if (container) {
+                        container.style.position = 'absolute';
+                        container.style.top = '0';
+                        container.style.left = '0';
+                        container.style.width = '100vw';
+                        container.style.height = '100vh';
+                        container.style.display = 'block';
+                        container.style.visibility = 'visible';
+                        container.style.opacity = '1';
+                    }
+                    if (playerDiv) {
+                        playerDiv.style.position = 'absolute';
+                        playerDiv.style.top = '0';
+                        playerDiv.style.left = '0';
+                        playerDiv.style.width = '100%';
+                        playerDiv.style.height = '100%';
+                    }
+                    if (overlay && this.showOverlay) {
+                        overlay.style.display = 'flex';
+                    }
+                } else {
+                    if (wrapper) {
+                        wrapper.style.width = '';
+                        wrapper.style.height = '';
+                        wrapper.style.position = 'relative';
+                        wrapper.style.top = '';
+                        wrapper.style.left = '';
+                        wrapper.style.zIndex = '';
+                        wrapper.style.borderRadius = '8px';
+                    }
+                    if (container) {
+                        container.style.position = 'absolute';
+                        container.style.top = '0';
+                        container.style.left = '0';
+                        container.style.width = '100%';
+                        container.style.height = '100%';
+                        container.style.display = 'block';
+                        container.style.visibility = 'visible';
+                        container.style.opacity = '1';
+                    }
+                    if (playerDiv) {
+                        playerDiv.style.position = 'absolute';
+                        playerDiv.style.top = '0';
+                        playerDiv.style.left = '0';
+                        playerDiv.style.width = '100%';
+                        playerDiv.style.height = '100%';
+                    }
+                    if (overlay) {
+                        overlay.style.display = 'none';
+                    }
+                }
+            }
+
+            updateFullscreenButton() {
+                var btn = document.querySelector('.fullscreen-btn');
+                if (btn) {
+                    btn.textContent = this.isFullscreen ? '⛶ Exit Fullscreen' : '⛶ Fullscreen Mode';
+                }
+            }
+
+            updateOverlayVisibility() {
+                var overlay = document.querySelector('.fullscreen-overlay');
+
+                if (overlay) {
+                    if (this.showOverlay) {
+                        overlay.classList.remove('overlay-hidden');
+                        if (this.isFullscreen) {
+                            overlay.style.display = 'flex';
+                        }
+                    } else {
+                        overlay.classList.add('overlay-hidden');
+                        overlay.style.display = 'none';
+                    }
+                }
+
+                var btn = document.querySelector('.overlay-btn');
+                if (btn) {
+                    btn.textContent = this.showOverlay ? '👁 Hide Overlay' : '👁 Show Overlay';
+                }
+            }
+
+            toggleOverlay(event) {
+                if (event) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                }
+
+                this.showOverlay = !this.showOverlay;
+                this.updateOverlayVisibility();
+            }
+
+            enterFullscreen() {
+                var wrapper = document.querySelector('.player-wrapper');
+                if (!wrapper) return;
+
+                var self = this;
+                try {
+                    if (wrapper.requestFullscreen) {
+                        wrapper.requestFullscreen().then(function() {
+                            self.isFullscreen = true;
+                            self.fixFullscreenSizing();
+                        }).catch(function(e) {
+                            console.log('Fullscreen request failed:', e);
+                        });
+                    } else if (wrapper.webkitRequestFullscreen) {
+                        wrapper.webkitRequestFullscreen();
+                        self.isFullscreen = true;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 300);
+                    } else if (wrapper.mozRequestFullScreen) {
+                        wrapper.mozRequestFullScreen();
+                        self.isFullscreen = true;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                    } else if (wrapper.msRequestFullscreen) {
+                        wrapper.msRequestFullscreen();
+                        self.isFullscreen = true;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                    }
+                } catch (e) {
+                    console.log('Fullscreen error:', e);
+                }
+            }
+
+            exitFullscreen() {
+                var self = this;
+                try {
+                    if (document.exitFullscreen) {
+                        document.exitFullscreen().then(function() {
+                            self.isFullscreen = false;
+                            self.fixFullscreenSizing();
+                        }).catch(function(e) {
+                            console.log('Exit fullscreen failed:', e);
+                        });
+                    } else if (document.webkitExitFullscreen) {
+                        document.webkitExitFullscreen();
+                        self.isFullscreen = false;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                    } else if (document.mozCancelFullScreen) {
+                        document.mozCancelFullScreen();
+                        self.isFullscreen = false;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                    } else if (document.msExitFullscreen) {
+                        document.msExitFullscreen();
+                        self.isFullscreen = false;
+                        setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                    }
+                } catch (e) {
+                    console.log('Exit fullscreen error:', e);
+                }
+            }
+
+            toggleFullscreen() {
+                if (this.isFullscreen) {
+                    this.exitFullscreen();
+                } else {
+                    this.enterFullscreen();
+                }
+            }
+
+            getQualityDisplayName(quality) {
+                var names = {
+                    'auto': 'Auto',
+                    '160p': '160p',
+                    '360p': '360p',
+                    '480p': '480p',
+                    '720p': '720p',
+                    '720p60': '720p60',
+                    '1080p60': '1080p60',
+                    'chunked': 'Source'
+                };
+                return names[quality] || quality;
+            }
+
+            applyQuality() {
+                if (!this.player || this.quality === 'auto') return;
+
+                try {
+                    var qualities = this.player.getQualities();
+                    if (qualities && qualities.length > 0) {
+                        var targetQuality = null;
+                        var self = this;
+
+                        for (var i = 0; i < qualities.length; i++) {
+                            var q = qualities[i];
+                            if (q.name.toLowerCase().indexOf(self.quality.toLowerCase()) !== -1 || q.group === self.quality) {
+                                targetQuality = q;
+                                break;
+                            }
+                        }
+
+                        if (targetQuality) {
+                            this.player.setQuality(targetQuality.group);
+                        } else if (this.quality === 'chunked' || this.quality === 'source') {
+                            for (var j = 0; j < qualities.length; j++) {
+                                if (qualities[j].group === 'chunked') {
+                                    this.player.setQuality('chunked');
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.log('Could not set quality:', e);
+                }
+            }
+
+            tryUnmute() {
+                if (this.unmuted || !this.player) return;
+
+                try {
+                    if (this.player.getMuted()) {
+                        this.player.setMuted(false);
+                        this.player.setVolume(1.0);
+                        this.unmuted = true;
+                    }
+                } catch (e) {
+                    console.log('Unmute attempt failed:', e);
+                }
+            }
+
+            createPlayer(channel) {
+                var container = document.getElementById('twitch-player');
+                if (!container) {
+                    console.log('Player container not found');
+                    return;
+                }
+
+                if (this.player) {
+                    try {
+                        this.player.setChannel(channel);
+                        this.qualitySet = false;
+                        this.unmuted = false;
+                        return;
+                    } catch (e) {
+                        console.log('setChannel failed, recreating player:', e);
+                        try {
+                            this.player.destroy();
+                        } catch (e2) {}
+                        this.player = null;
+                    }
+                }
+
+                container.innerHTML = '';
+                this.qualitySet = false;
+                this.unmuted = false;
+
+                var self = this;
+
+                var options = {
+                    width: '100%',
+                    height: '100%',
+                    channel: channel,
+                    parent: [this.getParentDomain()],
+                    autoplay: true,
+                    muted: true
+                };
+
+                try {
+                    this.player = new Twitch.Player(container, options);
+
+                    this.player.addEventListener(Twitch.Player.READY, function() {
+                        try {
+                            self.player.play();
+                        } catch (e) {
+                            console.log('Play on READY failed:', e);
+                        }
+                        if (self.isFullscreen) {
+                            setTimeout(function() { self.fixFullscreenSizing(); }, 100);
+                        }
+                    });
+
+                    this.player.addEventListener(Twitch.Player.PLAYING, function() {
+                        setTimeout(function() { self.tryUnmute(); }, 100);
+                        setTimeout(function() { self.tryUnmute(); }, 300);
+                        setTimeout(function() { self.tryUnmute(); }, 600);
+                        setTimeout(function() { self.tryUnmute(); }, 1000);
+                        setTimeout(function() { self.tryUnmute(); }, 2000);
+
+                        if (!self.qualitySet && self.quality !== 'auto') {
+                            setTimeout(function() {
+                                self.applyQuality();
+                                self.qualitySet = true;
+                            }, 1500);
+                        }
+
+                        if (self.isFullscreen) {
+                            setTimeout(function() { self.fixFullscreenSizing(); }, 200);
+                        }
+                    });
+
+                    this.player.addEventListener(Twitch.Player.PLAY, function() {
+                        setTimeout(function() { self.tryUnmute(); }, 200);
+                    });
+
+                    this.player.addEventListener(Twitch.Player.PAUSE, function() {
+                        setTimeout(function() {
+                            try {
+                                if (self.player && self.player.isPaused && self.player.isPaused()) {
+                                    self.player.play();
+                                }
+                            } catch (e) {}
+                        }, 100);
+                    });
+
+                } catch (e) {
+                    console.log('Error creating Twitch player, using iframe fallback:', e);
+                    var parent = this.getParentDomain();
+                    var url = 'https://player.twitch.tv/?channel=' + encodeURIComponent(channel) + '&parent=' + encodeURIComponent(parent) + '&autoplay=true&muted=false';
+                    container.innerHTML = '<iframe src="' + url + '" allowfullscreen="true" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;"></iframe>';
+                }
+            }
+
+            switchChannel(channel) {
+                this.qualitySet = false;
+                this.unmuted = false;
+
+                if (this.player) {
+                    try {
+                        this.player.setChannel(channel);
+                    } catch (e) {
+                        console.log('setChannel failed:', e);
+                        this.createPlayer(channel);
+                    }
+                } else {
+                    this.createPlayer(channel);
+                }
+            }
+
+            getEnabledStreamsCount() {
+                var count = 0;
+                for (var i = 0; i < this.streams.length; i++) {
+                    if (!this.skippedStreams.has(this.streams[i])) {
+                        count++;
+                    }
+                }
+                return count;
+            }
+
+            isStreamSkipped(streamName) {
+                return this.skippedStreams.has(streamName);
+            }
+
+            toggleStreamSkip(index) {
+                if (index < 0 || index >= this.streams.length) return;
+
+                var streamName = this.streams[index];
+
+                // Don't allow skipping if it's the last enabled stream
+                if (!this.skippedStreams.has(streamName) && this.getEnabledStreamsCount() <= 1) {
+                    return;
+                }
+
+                if (this.skippedStreams.has(streamName)) {
+                    this.skippedStreams.delete(streamName);
+                } else {
+                    this.skippedStreams.add(streamName);
+
+                    // If we just skipped the current stream, move to next
+                    if (index === this.currentIndex) {
+                        this.nextStream();
+                    }
+                }
+
+                this.updateStreamTags();
+                this.updateActiveCount();
+            }
+
+            updateStreamTags() {
+                var tags = document.querySelectorAll('.stream-tag');
+                for (var i = 0; i < tags.length; i++) {
+                    var streamName = this.streams[i];
+                    var isSkipped = this.skippedStreams.has(streamName);
+                    var isActive = (i === this.currentIndex);
+
+                    if (isSkipped) {
+                        tags[i].classList.add('skipped');
+                    } else {
+                        tags[i].classList.remove('skipped');
+                    }
+
+                    if (isActive) {
+                        tags[i].classList.add('active');
+                    } else {
+                        tags[i].classList.remove('active');
+                    }
+
+                    // Update checkbox
+                    var checkbox = tags[i].querySelector('.checkbox');
+                    if (checkbox) {
+                        checkbox.textContent = isSkipped ? '☐' : '☑';
+                    }
+                }
+            }
+
+            updateActiveCount() {
+                var countEl = document.querySelector('.active-count');
+                if (countEl) {
+                    var enabled = this.getEnabledStreamsCount();
+                    countEl.textContent = enabled + '/' + this.streams.length + ' active';
+                }
+            }
+
+            findNextEnabledIndex(startIndex, direction) {
+                var count = this.streams.length;
+                var index = startIndex;
+
+                for (var i = 0; i < count; i++) {
+                    index = (index + direction + count) % count;
+                    if (!this.skippedStreams.has(this.streams[index])) {
+                        return index;
+                    }
+                }
+
+                // Fallback to current if all are skipped (shouldn't happen)
+                return this.currentIndex;
+            }
+
+            startTimer() {
+                this.stopTimer();
+                this.elapsedSeconds = 0;
+
+                var self = this;
+                this.timerInterval = setInterval(function() {
+                    if (self.isPaused) return;
+
+                    self.elapsedSeconds++;
+                    self.updateTimerDisplay();
+
+                    if (self.elapsedSeconds >= self.waitTime * 60) {
+                        self.nextStream();
+                    }
+                }, 1000);
+            }
+
+            stopTimer() {
+                if (this.timerInterval) {
+                    clearInterval(this.timerInterval);
+                    this.timerInterval = null;
+                }
+            }
+
+            updateTimerDisplay() {
+                var progressBars = document.querySelectorAll('.timer-progress, .fs-progress');
+                var timerValues = document.querySelectorAll('.timer-value, .fs-timer-value');
+
+                var progress = (this.elapsedSeconds / (this.waitTime * 60)) * 100;
+                var remaining = Math.max(0, (this.waitTime * 60) - this.elapsedSeconds);
+                var mins = Math.floor(remaining / 60);
+                var secs = remaining % 60;
+                var timeStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
+
+                for (var i = 0; i < progressBars.length; i++) {
+                    progressBars[i].style.width = progress + '%';
+                }
+
+                for (var j = 0; j < timerValues.length; j++) {
+                    timerValues[j].textContent = timeStr;
+                }
+            }
+
+            nextStream() {
+                if (this.getEnabledStreamsCount() <= 1) return;
+
+                this.currentIndex = this.findNextEnabledIndex(this.currentIndex, 1);
+                this.elapsedSeconds = 0;
+                this.updateStreamDisplay();
+                this.switchChannel(this.streams[this.currentIndex]);
+            }
+
+            prevStream() {
+                if (this.getEnabledStreamsCount() <= 1) return;
+
+                this.currentIndex = this.findNextEnabledIndex(this.currentIndex, -1);
+                this.elapsedSeconds = 0;
+                this.updateStreamDisplay();
+                this.switchChannel(this.streams[this.currentIndex]);
+            }
+
+            goToStream(index) {
+                if (index < 0 || index >= this.streams.length) return;
+                if (this.skippedStreams.has(this.streams[index])) return;
+
+                this.currentIndex = index;
+                this.elapsedSeconds = 0;
+                this.updateStreamDisplay();
+                this.switchChannel(this.streams[this.currentIndex]);
+            }
+
+            updateStreamDisplay() {
+                var currentStream = this.streams[this.currentIndex];
+
+                var streamNames = document.querySelectorAll('.current-stream, .fs-stream-name');
+                for (var i = 0; i < streamNames.length; i++) {
+                    streamNames[i].textContent = currentStream;
+                }
+
+                this.updateStreamTags();
+                this.updateTimerDisplay();
+            }
+
+            togglePause() {
+                this.isPaused = !this.isPaused;
+                var btns = document.querySelectorAll('.pause-btn');
+                for (var i = 0; i < btns.length; i++) {
+                    btns[i].textContent = this.isPaused ? '▶ Resume' : '⏸ Pause';
+                }
+            }
+
+            startWithConfig(streams, waitTime, quality, autoFullscreen, showOverlay) {
+                var streamList = streams.split(/[,\s\/]+/);
+                this.streams = [];
+                for (var i = 0; i < streamList.length; i++) {
+                    var s = streamList[i].trim().toLowerCase();
+                    if (s) this.streams.push(s);
+                }
+                this.waitTime = Math.max(0.1, parseFloat(waitTime) || 5);
+                this.quality = quality || 'auto';
+                this.autoFullscreen = autoFullscreen || false;
+                this.showOverlay = showOverlay !== false;
+                this.currentIndex = 0;
+                this.skippedStreams = new Set();
+                this.updateURL();
+                this.render();
+
+                if (this.autoFullscreen) {
+                    var self = this;
+                    setTimeout(function() { self.enterFullscreen(); }, 500);
+                }
+            }
+
+            render() {
+                var app = document.getElementById('app');
+                if (!app) return;
+
+                if (this.streams.length === 0) {
+                    this.renderSetup(app);
+                } else {
+                    this.renderMain(app);
+                }
+            }
+
+            renderSetup(container) {
+                if (this.player) {
+                    try {
+                        this.player.destroy();
+                    } catch (e) {}
+                    this.player = null;
+                }
+
+                container.className = 'container';
+                container.innerHTML = 
+                    '<div class="setup-panel">' +
+                    '<h2>🎮 Twitch Stream Rotator</h2>' +
+                    '<div class="form-group">' +
+                    '<label for="streams">Stream Names (comma or space separated)</label>' +
+                    '<input type="text" id="streams" placeholder="shroud, pokimane, xqc">' +
+                    '<small>Enter Twitch usernames of streams you want to rotate through</small>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                    '<label for="waitTime">Rotation Interval (minutes)</label>' +
+                    '<input type="number" id="waitTime" value="5" min="0.1" step="0.5">' +
+                    '<small>How long to stay on each stream before switching</small>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                    '<label for="quality">Video Quality</label>' +
+                    '<select id="quality">' +
+                    '<option value="auto">Auto</option>' +
+                    '<option value="160p">160p (Low)</option>' +
+                    '<option value="360p">360p</option>' +
+                    '<option value="480p">480p</option>' +
+                    '<option value="720p">720p</option>' +
+                    '<option value="720p60">720p 60fps</option>' +
+                    '<option value="1080p60">1080p 60fps</option>' +
+                    '<option value="chunked">Source (Best)</option>' +
+                    '</select>' +
+                    '<small>Quality will be applied when each stream starts playing</small>' +
+                    '</div>' +
+                    '<div class="form-group">' +
+                    '<div class="checkbox-group">' +
+                    '<input type="checkbox" id="autoFullscreen">' +
+                    '<label for="autoFullscreen">Auto-fullscreen on start</label>' +
+                    '</div>' +
+                    '<div class="checkbox-group">' +
+                    '<input type="checkbox" id="showOverlay" checked>' +
+                    '<label for="showOverlay">Show overlay controls in fullscreen</label>' +
+                    '</div>' +
+                    '<small>Overlay shows stream info and controls when hovering in fullscreen mode</small>' +
+                    '</div>' +
+                    '<button onclick="app.startFromForm()">Start Watching</button>' +
+                    '<div class="url-example">' +
+                    '<strong>URL Format:</strong><br>' +
+                    'file.html#stream1/stream2/wait=5/quality=720p/fullscreen/nooverlay<br><br>' +
+                    '<strong>Example:</strong><br>' +
+                    'http://localhost:8000/rotator.html#shroud/pokimane/wait=10/fullscreen<br><br>' +
+                    '<strong>Parameters:</strong><br>' +
+                    '• wait=X (minutes)<br>' +
+                    '• quality=auto|160p|360p|480p|720p|720p60|1080p60|chunked<br>' +
+                    '• fullscreen or fs (auto-fullscreen on start)<br>' +
+                    '• nooverlay or clean (hide fullscreen overlay controls)' +
+                    '</div>' +
+                    '</div>';
+            }
+
+            renderMain(container) {
+                var currentStream = this.streams[this.currentIndex];
+                var self = this;
+
+                container.className = 'container playing';
+
+                var streamTagsHTML = '';
+                for (var i = 0; i < this.streams.length; i++) {
+                    var activeClass = (i === this.currentIndex) ? ' active' : '';
+                    var skippedClass = this.skippedStreams.has(this.streams[i]) ? ' skipped' : '';
+                    var checkboxIcon = this.skippedStreams.has(this.streams[i]) ? '☐' : '☑';
+                    streamTagsHTML += '<span class="stream-tag' + activeClass + skippedClass + '" data-index="' + i + '">' +
+                        '<span class="checkbox">' + checkboxIcon + '</span>' +
+                        '<span class="index">' + (i + 1) + '.</span>' +
+                        '<span class="stream-name">' + this.streams[i] + '</span>' +
+                        '</span>';
+                }
+
+                var overlayClass = this.showOverlay ? '' : ' overlay-hidden';
+                var overlayBtnText = this.showOverlay ? '👁 Hide Overlay' : '👁 Show Overlay';
+                var enabledCount = this.getEnabledStreamsCount();
+
+                container.innerHTML = 
+                    '<div class="header">' +
+                    '<h1>🎮 Twitch Rotator</h1>' +
+                    '<div class="controls">' +
+                    '<div class="info-panel">' +
+                    '<div class="info-item">' +
+                    '<span class="info-label">Now:</span>' +
+                    '<span class="info-value current-stream">' + currentStream + '</span>' +
+                    '</div>' +
+                    '<div class="info-item">' +
+                    '<span class="info-label">Next:</span>' +
+                    '<span class="info-value timer-value">--:--</span>' +
+                    '</div>' +
+                    '<div class="info-item">' +
+                    '<span class="info-label">Quality:</span>' +
+                    '<span class="info-value quality-value">' + this.getQualityDisplayName(this.quality) + '</span>' +
+                    '</div>' +
+                    '</div>' +
+                    '<button class="secondary" onclick="app.prevStream()">⏮ Prev</button>' +
+                    '<button class="pause-btn" onclick="app.togglePause()">' + (this.isPaused ? '▶ Resume' : '⏸ Pause') + '</button>' +
+                    '<button class="secondary" onclick="app.nextStream()">Next ⏭</button>' +
+                    '<button class="fullscreen-btn" onclick="app.toggleFullscreen()">⛶ Fullscreen</button>' +
+                    '<button class="secondary overlay-btn" onclick="app.toggleOverlay(event)">' + overlayBtnText + '</button>' +
+                    '<button class="danger" onclick="app.reset()">✕</button>' +
+                    '</div>' +
+                    '</div>' +
+                    '<div class="timer-bar">' +
+                    '<div class="timer-progress"></div>' +
+                    '</div>' +
+                    '<div class="player-wrapper">' +
+                    '<div class="player-container" id="twitch-player"></div>' +
+                    '<div class="fullscreen-overlay' + overlayClass + '">' +
+                    '<div class="fs-info">' +
+                    '<span class="fs-stream-name">' + currentStream + '</span>' +
+                    '<span class="fs-timer">Next in: <span class="fs-timer-value">--:--</span></span>' +
+                    '</div>' +
+                    '<div class="fs-controls">' +
+                    '<button class="secondary" onclick="app.prevStream()">⏮ Prev</button>' +
+                    '<button class="pause-btn" onclick="app.togglePause()">' + (this.isPaused ? '▶ Resume' : '⏸ Pause') + '</button>' +
+                    '<button class="secondary" onclick="app.nextStream()">Next ⏭</button>' +
+                    '<button class="secondary" onclick="app.toggleOverlay(event)">👁 Toggle</button>' +
+                    '<button class="danger" onclick="app.exitFullscreen()">✕ Exit</button>' +
+                    '</div>' +
+                    '<div class="fs-progress-bar">' +
+                    '<div class="fs-progress"></div>' +
+                    '</div>' +
+                    '</div>' +
+                    '</div>' +
+                    '<div class="stream-list">' +
+                    '<h3>Queue <span class="active-count">(' + enabledCount + '/' + this.streams.length + ' active)</span></h3>' +
+                    '<div class="hint">Click to toggle skip • Double-click to watch now</div>' +
+                    '<div class="streams">' + streamTagsHTML + '</div>' +
+                    '</div>';
+
+                // Set up click handlers for stream tags
+                var tags = document.querySelectorAll('.stream-tag');
+                for (var j = 0; j < tags.length; j++) {
+                    (function(tag) {
+                        var clickTimer = null;
+                        var clickCount = 0;
+
+                        tag.addEventListener('click', function(e) {
+                            e.preventDefault();
+                            var index = parseInt(tag.getAttribute('data-index'), 10);
+                            clickCount++;
+
+                            if (clickCount === 1) {
+                                clickTimer = setTimeout(function() {
+                                    // Single click - toggle skip
+                                    self.toggleStreamSkip(index);
+                                    clickCount = 0;
+                                }, 250);
+                            } else if (clickCount === 2) {
+                                // Double click - go to stream
+                                clearTimeout(clickTimer);
+                                clickCount = 0;
+
+                                // If stream is skipped, enable it first
+                                if (self.skippedStreams.has(self.streams[index])) {
+                                    self.skippedStreams.delete(self.streams[index]);
+                                    self.updateStreamTags();
+                                    self.updateActiveCount();
+                                }
+                                self.goToStream(index);
+                            }
+                        });
+                    })(tags[j]);
+                }
+
+                setTimeout(function() {
+                    self.createPlayer(currentStream);
+                    self.startTimer();
+
+                    if (self.autoFullscreen && !self.isFullscreen) {
+                        setTimeout(function() { self.enterFullscreen(); }, 500);
+                    }
+                }, 0);
+            }
+
+            startFromForm() {
+                var streamsInput = document.getElementById('streams');
+                var waitTimeInput = document.getElementById('waitTime');
+                var qualityInput = document.getElementById('quality');
+                var autoFullscreenInput = document.getElementById('autoFullscreen');
+                var showOverlayInput = document.getElementById('showOverlay');
+
+                var streams = streamsInput ? streamsInput.value : '';
+                var waitTime = waitTimeInput ? waitTimeInput.value : '5';
+                var quality = qualityInput ? qualityInput.value : 'auto';
+                var autoFullscreen = autoFullscreenInput ? autoFullscreenInput.checked : false;
+                var showOverlay = showOverlayInput ? showOverlayInput.checked : true;
+
+                this.startWithConfig(streams, waitTime, quality, autoFullscreen, showOverlay);
+            }
+
+            reset() {
+                this.stopTimer();
+                if (this.player) {
+                    try {
+                        this.player.destroy();
+                    } catch (e) {
+                        console.log('Error destroying player:', e);
+                    }
+                    this.player = null;
+                }
+                if (this.isFullscreen) {
+                    this.exitFullscreen();
+                }
+                this.streams = [];
+                this.skippedStreams = new Set();
+                this.currentIndex = 0;
+                window.location.hash = '';
+                this.render();
+            }
+        }
+
+        var app = new TwitchRotator();
+
+        window.addEventListener('hashchange', function() {
+            if (app.internalHashChange) {
+                app.internalHashChange = false;
+                return;
+            }
+
+            app.parseURL();
+            app.currentIndex = 0;
+            app.render();
+        });
+    </script>
+</body>
+</html>
