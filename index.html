@@ -1,0 +1,7 @@
+getParentDomain() {
+    var hostname = window.location.hostname;
+    if (!hostname || hostname === '' || hostname === '127.0.0.1') {
+        return 'localhost';
+    }
+    return hostname;  // This will automatically return 'username.github.io'
+}
