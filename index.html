@@ -461,6 +461,8 @@
             z-index: 10000;
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
             display: none;
+            min-width: 200px;
+            max-width: 250px;
         }
 
         .duration-editor.visible {
@@ -682,7 +684,6 @@
                     } else if (part === 'nooverlay' || part === 'clean') {
                         showOverlay = false;
                     } else if (part && part.indexOf('=') === -1) {
-                        // Parse stream:duration format
                         var streamParts = part.split(':');
                         var streamName = streamParts[0].toLowerCase();
                         var streamDuration = null;
@@ -763,7 +764,6 @@
                 this.updateStreamTags();
                 this.updateURL();
 
-                // If editing current stream, reset timer display
                 if (index === this.currentIndex) {
                     this.updateTimerDisplay();
                 }
@@ -783,12 +783,35 @@
                 input.value = stream.duration !== null ? stream.duration : '';
                 input.placeholder = this.waitTime + ' (default)';
 
-                // Position editor near the clicked element
-                var rect = event.target.getBoundingClientRect();
-                editor.style.top = (rect.bottom + 5) + 'px';
-                editor.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
-
+                // Make editor visible first to get its dimensions
+                editor.style.visibility = 'hidden';
                 editor.classList.add('visible');
+
+                var rect = event.target.getBoundingClientRect();
+                var editorRect = editor.getBoundingClientRect();
+
+                // Calculate position
+                var top = rect.bottom + 5;
+                var left = rect.left;
+
+                // Adjust if editor would go off-screen to the right
+                if (left + editorRect.width > window.innerWidth - 10) {
+                    left = window.innerWidth - editorRect.width - 10;
+                }
+
+                // Adjust if editor would go off-screen at the bottom
+                if (top + editorRect.height > window.innerHeight - 10) {
+                    top = rect.top - editorRect.height - 5;
+                }
+
+                // Ensure it doesn't go off-screen to the left or top
+                left = Math.max(10, left);
+                top = Math.max(10, top);
+
+                editor.style.top = top + 'px';
+                editor.style.left = left + 'px';
+                editor.style.visibility = 'visible';
+
                 input.focus();
                 input.select();
             }
@@ -847,7 +870,6 @@
                     }
                 });
 
-                // Handle Enter key in editor
                 document.getElementById('editor-duration').addEventListener('keydown', function(e) {
                     if (e.key === 'Enter') {
                         self.saveDuration();
@@ -1301,7 +1323,7 @@
                 var countEl = document.querySelector('.active-count');
                 if (countEl) {
                     var enabled = this.getEnabledStreamsCount();
-                    countEl.textContent = enabled + '/' + this.streams.length + ' active';
+                    countEl.textContent = '(' + enabled + '/' + this.streams.length + ' active)';
                 }
             }
 
@@ -1465,8 +1487,8 @@
                     '<h2>🎮 Twitch Stream Rotator</h2>' +
                     '<div class="form-group">' +
                     '<label for="streams">Stream Names (comma or space separated)</label>' +
-                    '<input type="text" id="streams" placeholder="lilaggy, star0chris, mitchriz">' +
-                    '<small>Enter Twitch usernames. Optional: add :minutes for custom duration (e.g., lilaggy:10)</small>' +
+                    '<input type="text" id="streams" placeholder="shroud, pokimane, xqc">' +
+                    '<small>Enter Twitch usernames. Optional: add :minutes for custom duration (e.g., shroud:10)</small>' +
                     '</div>' +
                     '<div class="form-group">' +
                     '<label for="waitTime">Default Rotation Interval (minutes)</label>' +
@@ -1501,9 +1523,9 @@
                     '<button onclick="app.startFromForm()">Start Watching</button>' +
                     '<div class="url-example">' +
                     '<strong>URL Format:</strong><br>' +
-                    'https://zakkaruu.github.io/twitch-rotator/#stream1/stream2:10/stream3:2/wait=5/quality=720p<br><br>' +
+                    'file.html#stream1/stream2:10/stream3:2/wait=5/quality=720p<br><br>' +
                     '<strong>Example:</strong><br>' +
-                    'https://zakkaruu.github.io/twitch-rotator/#lilaggy/star0chris:10/mitchriz:2/wait=5/fullscreen<br><br>' +
+                    'rotator.html#shroud/pokimane:10/xqc:2/wait=5/fullscreen<br><br>' +
                     '<strong>Parameters:</strong><br>' +
                     '• streamname:X (custom duration in minutes for that stream)<br>' +
                     '• wait=X (default minutes between rotations)<br>' +
@@ -1595,7 +1617,6 @@
                     '<div class="streams">' + streamTagsHTML + '</div>' +
                     '</div>';
 
-                // Set up click handlers for stream tags
                 var tags = document.querySelectorAll('.stream-tag');
                 for (var j = 0; j < tags.length; j++) {
                     (function(tag) {
@@ -1603,7 +1624,6 @@
                         var clickCount = 0;
 
                         tag.addEventListener('click', function(e) {
-                            // Ignore clicks on duration
                             if (e.target.classList.contains('duration')) {
                                 return;
                             }
@@ -1632,7 +1652,6 @@
                     })(tags[j]);
                 }
 
-                // Set up click handlers for duration badges
                 var durations = document.querySelectorAll('.duration');
                 for (var k = 0; k < durations.length; k++) {
                     (function(durationEl) {
