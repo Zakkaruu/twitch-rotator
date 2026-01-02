@@ -1525,7 +1525,7 @@
                     '<strong>URL Format:</strong><br>' +
                     'https://zakkaruu.github.io/twitch-rotator/#stream1/stream2:10/stream3:2/wait=5/quality=720p<br><br>' +
                     '<strong>Example:</strong><br>' +
-                    'https://zakkaruu.github.io/twitch-rotator/#lilaggy/star0chris:10/mitchriz:2/wait=5/fullscreen<br><br>' +
+                    'https://zakkaruu.github.io/twitch-rotator/#shroud/pokimane:10/xqc:2/wait=5/fullscreen<br><br>' +
                     '<strong>Parameters:</strong><br>' +
                     '• streamname:X (custom duration in minutes for that stream)<br>' +
                     '• wait=X (default minutes between rotations)<br>' +
@@ -1680,13 +1680,51 @@
                 var autoFullscreenInput = document.getElementById('autoFullscreen');
                 var showOverlayInput = document.getElementById('showOverlay');
 
-                var streams = streamsInput ? streamsInput.value : '';
+                var streamsRaw = streamsInput ? streamsInput.value : '';
                 var waitTime = waitTimeInput ? waitTimeInput.value : '5';
                 var quality = qualityInput ? qualityInput.value : 'auto';
                 var autoFullscreen = autoFullscreenInput ? autoFullscreenInput.checked : false;
                 var showOverlay = showOverlayInput ? showOverlayInput.checked : true;
 
-                this.startWithConfig(streams, waitTime, quality, autoFullscreen, showOverlay);
+                // Parse streams with optional :duration syntax
+                var streamList = streamsRaw.split(/[,\s\/]+/);
+                this.streams = [];
+                for (var i = 0; i < streamList.length; i++) {
+                    var part = streamList[i].trim();
+                    if (!part) continue;
+
+                    var streamParts = part.split(':');
+                    var streamName = streamParts[0].toLowerCase();
+                    var streamDuration = null;
+
+                    if (streamParts.length > 1) {
+                        var parsedDuration = parseFloat(streamParts[1]);
+                        if (!isNaN(parsedDuration) && parsedDuration > 0) {
+                            streamDuration = parsedDuration;
+                        }
+                    }
+
+                    if (streamName) {
+                        this.streams.push({
+                            name: streamName,
+                            duration: streamDuration
+                        });
+                    }
+                }
+
+                this.waitTime = Math.max(0.1, parseFloat(waitTime) || 5);
+                this.quality = quality || 'auto';
+                this.autoFullscreen = autoFullscreen || false;
+                this.showOverlay = showOverlay !== false;
+                this.currentIndex = 0;
+                this.skippedStreams = new Set();
+                this.updateURL();
+                this.render();
+
+                if (this.autoFullscreen) {
+                    var self = this;
+                    setTimeout(function() { self.enterFullscreen(); }, 500);
+                }
             }
 
             reset() {
