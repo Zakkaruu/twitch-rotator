@@ -183,7 +183,6 @@
             border: none;
         }
 
-        /* Standard fullscreen */
         .player-wrapper:fullscreen {
             width: 100vw !important;
             height: 100vh !important;
@@ -213,7 +212,6 @@
             opacity: 1;
         }
 
-        /* WebKit (Safari) fullscreen */
         .player-wrapper:-webkit-full-screen {
             width: 100vw !important;
             height: 100vh !important;
@@ -243,7 +241,6 @@
             opacity: 1;
         }
 
-        /* Mozilla (Firefox) fullscreen */
         .player-wrapper:-moz-full-screen {
             width: 100vw !important;
             height: 100vh !important;
@@ -420,6 +417,100 @@
             color: #6a6a6d;
         }
 
+        .stream-tag .duration {
+            color: #bf94ff;
+            font-size: 0.75rem;
+            margin-left: 2px;
+            padding: 2px 6px;
+            background: rgba(145, 71, 255, 0.2);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .stream-tag .duration:hover {
+            background: rgba(145, 71, 255, 0.4);
+        }
+
+        .stream-tag.active .duration {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+        }
+
+        .stream-tag.skipped .duration {
+            background: rgba(255, 255, 255, 0.1);
+            color: #6a6a6d;
+        }
+
+        .stream-tag .duration.custom {
+            color: #00d4aa;
+            background: rgba(0, 212, 170, 0.2);
+        }
+
+        .stream-tag.active .duration.custom {
+            background: rgba(0, 212, 170, 0.3);
+            color: #00d4aa;
+        }
+
+        .duration-editor {
+            position: fixed;
+            background: #18181b;
+            border: 2px solid #9147ff;
+            border-radius: 8px;
+            padding: 12px;
+            z-index: 10000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            display: none;
+        }
+
+        .duration-editor.visible {
+            display: block;
+        }
+
+        .duration-editor label {
+            display: block;
+            color: #adadb8;
+            font-size: 0.8rem;
+            margin-bottom: 6px;
+        }
+
+        .duration-editor .editor-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .duration-editor input {
+            width: 80px;
+            padding: 8px;
+            border: 2px solid #3a3a3d;
+            border-radius: 6px;
+            background: #0e0e10;
+            color: #efeff1;
+            font-size: 0.9rem;
+        }
+
+        .duration-editor input:focus {
+            outline: none;
+            border-color: #9147ff;
+        }
+
+        .duration-editor .unit {
+            color: #adadb8;
+            font-size: 0.85rem;
+        }
+
+        .duration-editor .editor-buttons {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .duration-editor button {
+            padding: 6px 12px;
+            font-size: 0.8rem;
+        }
+
         .setup-panel {
             background: #18181b;
             border-radius: 8px;
@@ -522,6 +613,19 @@
         </div>
     </div>
 
+    <div class="duration-editor" id="duration-editor">
+        <label>Duration for <span id="editor-stream-name">stream</span></label>
+        <div class="editor-row">
+            <input type="number" id="editor-duration" min="0.1" step="0.5" placeholder="default">
+            <span class="unit">minutes</span>
+        </div>
+        <div class="editor-buttons">
+            <button onclick="app.saveDuration()">Save</button>
+            <button class="secondary" onclick="app.resetDuration()">Reset</button>
+            <button class="secondary" onclick="app.closeDurationEditor()">Cancel</button>
+        </div>
+    </div>
+
     <script>
         class TwitchRotator {
             constructor() {
@@ -540,10 +644,12 @@
                 this.qualitySet = false;
                 this.unmuted = false;
                 this.internalHashChange = false;
+                this.editingStreamIndex = -1;
 
                 this.parseURL();
                 this.render();
                 this.setupFullscreenListener();
+                this.setupEditorClickOutside();
             }
 
             getParentDomain() {
@@ -576,7 +682,24 @@
                     } else if (part === 'nooverlay' || part === 'clean') {
                         showOverlay = false;
                     } else if (part && part.indexOf('=') === -1) {
-                        streams.push(part.toLowerCase());
+                        // Parse stream:duration format
+                        var streamParts = part.split(':');
+                        var streamName = streamParts[0].toLowerCase();
+                        var streamDuration = null;
+
+                        if (streamParts.length > 1) {
+                            var parsedDuration = parseFloat(streamParts[1]);
+                            if (!isNaN(parsedDuration) && parsedDuration > 0) {
+                                streamDuration = parsedDuration;
+                            }
+                        }
+
+                        if (streamName) {
+                            streams.push({
+                                name: streamName,
+                                duration: streamDuration
+                            });
+                        }
                     }
                 }
 
@@ -594,7 +717,16 @@
                     return;
                 }
 
-                var parts = this.streams.slice();
+                var parts = [];
+                for (var i = 0; i < this.streams.length; i++) {
+                    var stream = this.streams[i];
+                    if (stream.duration !== null) {
+                        parts.push(stream.name + ':' + stream.duration);
+                    } else {
+                        parts.push(stream.name);
+                    }
+                }
+
                 parts.push('wait=' + this.waitTime);
                 if (this.quality !== 'auto') {
                     parts.push('quality=' + this.quality);
@@ -608,6 +740,121 @@
 
                 this.internalHashChange = true;
                 window.location.hash = parts.join('/');
+            }
+
+            getStreamName(index) {
+                if (index < 0 || index >= this.streams.length) return '';
+                return this.streams[index].name;
+            }
+
+            getStreamDuration(index) {
+                if (index < 0 || index >= this.streams.length) return this.waitTime;
+                var stream = this.streams[index];
+                return stream.duration !== null ? stream.duration : this.waitTime;
+            }
+
+            getCurrentStreamDuration() {
+                return this.getStreamDuration(this.currentIndex);
+            }
+
+            setStreamDuration(index, duration) {
+                if (index < 0 || index >= this.streams.length) return;
+                this.streams[index].duration = duration;
+                this.updateStreamTags();
+                this.updateURL();
+
+                // If editing current stream, reset timer display
+                if (index === this.currentIndex) {
+                    this.updateTimerDisplay();
+                }
+            }
+
+            openDurationEditor(index, event) {
+                event.stopPropagation();
+
+                var editor = document.getElementById('duration-editor');
+                var input = document.getElementById('editor-duration');
+                var nameSpan = document.getElementById('editor-stream-name');
+
+                this.editingStreamIndex = index;
+                var stream = this.streams[index];
+
+                nameSpan.textContent = stream.name;
+                input.value = stream.duration !== null ? stream.duration : '';
+                input.placeholder = this.waitTime + ' (default)';
+
+                // Position editor near the clicked element
+                var rect = event.target.getBoundingClientRect();
+                editor.style.top = (rect.bottom + 5) + 'px';
+                editor.style.left = Math.min(rect.left, window.innerWidth - 220) + 'px';
+
+                editor.classList.add('visible');
+                input.focus();
+                input.select();
+            }
+
+            closeDurationEditor() {
+                var editor = document.getElementById('duration-editor');
+                editor.classList.remove('visible');
+                this.editingStreamIndex = -1;
+            }
+
+            saveDuration() {
+                if (this.editingStreamIndex < 0) return;
+
+                var input = document.getElementById('editor-duration');
+                var value = input.value.trim();
+
+                if (value === '') {
+                    this.streams[this.editingStreamIndex].duration = null;
+                } else {
+                    var duration = parseFloat(value);
+                    if (!isNaN(duration) && duration > 0) {
+                        this.streams[this.editingStreamIndex].duration = duration;
+                    }
+                }
+
+                this.updateStreamTags();
+                this.updateURL();
+
+                if (this.editingStreamIndex === this.currentIndex) {
+                    this.updateTimerDisplay();
+                }
+
+                this.closeDurationEditor();
+            }
+
+            resetDuration() {
+                if (this.editingStreamIndex < 0) return;
+
+                this.streams[this.editingStreamIndex].duration = null;
+                this.updateStreamTags();
+                this.updateURL();
+
+                if (this.editingStreamIndex === this.currentIndex) {
+                    this.updateTimerDisplay();
+                }
+
+                this.closeDurationEditor();
+            }
+
+            setupEditorClickOutside() {
+                var self = this;
+                document.addEventListener('click', function(e) {
+                    var editor = document.getElementById('duration-editor');
+                    if (editor.classList.contains('visible') && !editor.contains(e.target)) {
+                        self.closeDurationEditor();
+                    }
+                });
+
+                // Handle Enter key in editor
+                document.getElementById('editor-duration').addEventListener('keydown', function(e) {
+                    if (e.key === 'Enter') {
+                        self.saveDuration();
+                    } else if (e.key === 'Escape') {
+                        self.closeDurationEditor();
+                    }
+                });
             }
 
             getFullscreenElement() {
@@ -979,7 +1226,7 @@
             getEnabledStreamsCount() {
                 var count = 0;
                 for (var i = 0; i < this.streams.length; i++) {
-                    if (!this.skippedStreams.has(this.streams[i])) {
+                    if (!this.skippedStreams.has(this.streams[i].name)) {
                         count++;
                     }
                 }
@@ -993,9 +1240,8 @@
             toggleStreamSkip(index) {
                 if (index < 0 || index >= this.streams.length) return;
 
-                var streamName = this.streams[index];
+                var streamName = this.streams[index].name;
 
-                // Don't allow skipping if it's the last enabled stream
                 if (!this.skippedStreams.has(streamName) && this.getEnabledStreamsCount() <= 1) {
                     return;
                 }
@@ -1005,7 +1251,6 @@
                 } else {
                     this.skippedStreams.add(streamName);
 
-                    // If we just skipped the current stream, move to next
                     if (index === this.currentIndex) {
                         this.nextStream();
                     }
@@ -1018,8 +1263,8 @@
             updateStreamTags() {
                 var tags = document.querySelectorAll('.stream-tag');
                 for (var i = 0; i < tags.length; i++) {
-                    var streamName = this.streams[i];
-                    var isSkipped = this.skippedStreams.has(streamName);
+                    var stream = this.streams[i];
+                    var isSkipped = this.skippedStreams.has(stream.name);
                     var isActive = (i === this.currentIndex);
 
                     if (isSkipped) {
@@ -1034,10 +1279,20 @@
                         tags[i].classList.remove('active');
                     }
 
-                    // Update checkbox
                     var checkbox = tags[i].querySelector('.checkbox');
                     if (checkbox) {
                         checkbox.textContent = isSkipped ? '☐' : '☑';
+                    }
+
+                    var durationEl = tags[i].querySelector('.duration');
+                    if (durationEl) {
+                        var duration = stream.duration !== null ? stream.duration : this.waitTime;
+                        durationEl.textContent = duration + 'm';
+                        if (stream.duration !== null) {
+                            durationEl.classList.add('custom');
+                        } else {
+                            durationEl.classList.remove('custom');
+                        }
                     }
                 }
             }
@@ -1056,12 +1311,11 @@
 
                 for (var i = 0; i < count; i++) {
                     index = (index + direction + count) % count;
-                    if (!this.skippedStreams.has(this.streams[index])) {
+                    if (!this.skippedStreams.has(this.streams[index].name)) {
                         return index;
                     }
                 }
 
-                // Fallback to current if all are skipped (shouldn't happen)
                 return this.currentIndex;
             }
 
@@ -1076,7 +1330,8 @@
                     self.elapsedSeconds++;
                     self.updateTimerDisplay();
 
-                    if (self.elapsedSeconds >= self.waitTime * 60) {
+                    var currentDuration = self.getCurrentStreamDuration();
+                    if (self.elapsedSeconds >= currentDuration * 60) {
                         self.nextStream();
                     }
                 }, 1000);
@@ -1093,10 +1348,12 @@
                 var progressBars = document.querySelectorAll('.timer-progress, .fs-progress');
                 var timerValues = document.querySelectorAll('.timer-value, .fs-timer-value');
 
-                var progress = (this.elapsedSeconds / (this.waitTime * 60)) * 100;
-                var remaining = Math.max(0, (this.waitTime * 60) - this.elapsedSeconds);
+                var currentDuration = this.getCurrentStreamDuration();
+                var totalSeconds = currentDuration * 60;
+                var progress = (this.elapsedSeconds / totalSeconds) * 100;
+                var remaining = Math.max(0, totalSeconds - this.elapsedSeconds);
                 var mins = Math.floor(remaining / 60);
-                var secs = remaining % 60;
+                var secs = Math.floor(remaining % 60);
                 var timeStr = mins + ':' + (secs < 10 ? '0' : '') + secs;
 
                 for (var i = 0; i < progressBars.length; i++) {
@@ -1114,7 +1371,7 @@
                 this.currentIndex = this.findNextEnabledIndex(this.currentIndex, 1);
                 this.elapsedSeconds = 0;
                 this.updateStreamDisplay();
-                this.switchChannel(this.streams[this.currentIndex]);
+                this.switchChannel(this.streams[this.currentIndex].name);
             }
 
             prevStream() {
@@ -1123,21 +1380,21 @@
                 this.currentIndex = this.findNextEnabledIndex(this.currentIndex, -1);
                 this.elapsedSeconds = 0;
                 this.updateStreamDisplay();
-                this.switchChannel(this.streams[this.currentIndex]);
+                this.switchChannel(this.streams[this.currentIndex].name);
             }
 
             goToStream(index) {
                 if (index < 0 || index >= this.streams.length) return;
-                if (this.skippedStreams.has(this.streams[index])) return;
+                if (this.skippedStreams.has(this.streams[index].name)) return;
 
                 this.currentIndex = index;
                 this.elapsedSeconds = 0;
                 this.updateStreamDisplay();
-                this.switchChannel(this.streams[this.currentIndex]);
+                this.switchChannel(this.streams[this.currentIndex].name);
             }
 
             updateStreamDisplay() {
-                var currentStream = this.streams[this.currentIndex];
+                var currentStream = this.streams[this.currentIndex].name;
 
                 var streamNames = document.querySelectorAll('.current-stream, .fs-stream-name');
                 for (var i = 0; i < streamNames.length; i++) {
@@ -1161,7 +1418,12 @@
                 this.streams = [];
                 for (var i = 0; i < streamList.length; i++) {
                     var s = streamList[i].trim().toLowerCase();
-                    if (s) this.streams.push(s);
+                    if (s) {
+                        this.streams.push({
+                            name: s,
+                            duration: null
+                        });
+                    }
                 }
                 this.waitTime = Math.max(0.1, parseFloat(waitTime) || 5);
                 this.quality = quality || 'auto';
@@ -1204,12 +1466,12 @@
                     '<div class="form-group">' +
                     '<label for="streams">Stream Names (comma or space separated)</label>' +
                     '<input type="text" id="streams" placeholder="shroud, pokimane, xqc">' +
-                    '<small>Enter Twitch usernames of streams you want to rotate through</small>' +
+                    '<small>Enter Twitch usernames. Optional: add :minutes for custom duration (e.g., shroud:10)</small>' +
                     '</div>' +
                     '<div class="form-group">' +
-                    '<label for="waitTime">Rotation Interval (minutes)</label>' +
+                    '<label for="waitTime">Default Rotation Interval (minutes)</label>' +
                     '<input type="number" id="waitTime" value="5" min="0.1" step="0.5">' +
-                    '<small>How long to stay on each stream before switching</small>' +
+                    '<small>Default time on each stream (can be overridden per-stream)</small>' +
                     '</div>' +
                     '<div class="form-group">' +
                     '<label for="quality">Video Quality</label>' +
@@ -1239,11 +1501,12 @@
                     '<button onclick="app.startFromForm()">Start Watching</button>' +
                     '<div class="url-example">' +
                     '<strong>URL Format:</strong><br>' +
-                    'http://your-domain-here.xyz#stream1/stream2/wait=5/quality=720p/fullscreen/nooverlay<br><br>' +
+                    'https://zakkaruu.github.io/twitch-rotator/#stream1/stream2:10/stream3:2/wait=5/quality=720p<br><br>' +
                     '<strong>Example:</strong><br>' +
-                    'http://your-domain-here.xyz/rotator.html#shroud/pokimane/wait=10/fullscreen<br><br>' +
+                    'https://zakkaruu.github.io/twitch-rotator/#shroud/pokimane:10/xqc:2/wait=5/fullscreen<br><br>' +
                     '<strong>Parameters:</strong><br>' +
-                    '• wait=X (minutes)<br>' +
+                    '• streamname:X (custom duration in minutes for that stream)<br>' +
+                    '• wait=X (default minutes between rotations)<br>' +
                     '• quality=auto|160p|360p|480p|720p|720p60|1080p60|chunked<br>' +
                     '• fullscreen or fs (auto-fullscreen on start)<br>' +
                     '• nooverlay or clean (hide fullscreen overlay controls)' +
@@ -1252,20 +1515,25 @@
             }
 
             renderMain(container) {
-                var currentStream = this.streams[this.currentIndex];
+                var currentStream = this.streams[this.currentIndex].name;
                 var self = this;
 
                 container.className = 'container playing';
 
                 var streamTagsHTML = '';
                 for (var i = 0; i < this.streams.length; i++) {
+                    var stream = this.streams[i];
                     var activeClass = (i === this.currentIndex) ? ' active' : '';
-                    var skippedClass = this.skippedStreams.has(this.streams[i]) ? ' skipped' : '';
-                    var checkboxIcon = this.skippedStreams.has(this.streams[i]) ? '☐' : '☑';
+                    var skippedClass = this.skippedStreams.has(stream.name) ? ' skipped' : '';
+                    var checkboxIcon = this.skippedStreams.has(stream.name) ? '☐' : '☑';
+                    var duration = stream.duration !== null ? stream.duration : this.waitTime;
+                    var customClass = stream.duration !== null ? ' custom' : '';
+
                     streamTagsHTML += '<span class="stream-tag' + activeClass + skippedClass + '" data-index="' + i + '">' +
                         '<span class="checkbox">' + checkboxIcon + '</span>' +
                         '<span class="index">' + (i + 1) + '.</span>' +
-                        '<span class="stream-name">' + this.streams[i] + '</span>' +
+                        '<span class="stream-name">' + stream.name + '</span>' +
+                        '<span class="duration' + customClass + '" data-index="' + i + '">' + duration + 'm</span>' +
                         '</span>';
                 }
 
@@ -1323,7 +1591,7 @@
                     '</div>' +
                     '<div class="stream-list">' +
                     '<h3>Queue <span class="active-count">(' + enabledCount + '/' + this.streams.length + ' active)</span></h3>' +
-                    '<div class="hint">Click to toggle skip • Double-click to watch now</div>' +
+                    '<div class="hint">Click to toggle skip • Double-click to watch • Click duration to edit</div>' +
                     '<div class="streams">' + streamTagsHTML + '</div>' +
                     '</div>';
 
@@ -1335,24 +1603,26 @@
                         var clickCount = 0;
 
                         tag.addEventListener('click', function(e) {
+                            // Ignore clicks on duration
+                            if (e.target.classList.contains('duration')) {
+                                return;
+                            }
+
                             e.preventDefault();
                             var index = parseInt(tag.getAttribute('data-index'), 10);
                             clickCount++;
 
                             if (clickCount === 1) {
                                 clickTimer = setTimeout(function() {
-                                    // Single click - toggle skip
                                     self.toggleStreamSkip(index);
                                     clickCount = 0;
                                 }, 250);
                             } else if (clickCount === 2) {
-                                // Double click - go to stream
                                 clearTimeout(clickTimer);
                                 clickCount = 0;
 
-                                // If stream is skipped, enable it first
-                                if (self.skippedStreams.has(self.streams[index])) {
-                                    self.skippedStreams.delete(self.streams[index]);
+                                if (self.skippedStreams.has(self.streams[index].name)) {
+                                    self.skippedStreams.delete(self.streams[index].name);
                                     self.updateStreamTags();
                                     self.updateActiveCount();
                                 }
@@ -1360,6 +1630,18 @@
                             }
                         });
                     })(tags[j]);
+                }
+
+                // Set up click handlers for duration badges
+                var durations = document.querySelectorAll('.duration');
+                for (var k = 0; k < durations.length; k++) {
+                    (function(durationEl) {
+                        durationEl.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            var index = parseInt(durationEl.getAttribute('data-index'), 10);
+                            self.openDurationEditor(index, e);
+                        });
+                    })(durations[k]);
                 }
 
                 setTimeout(function() {
